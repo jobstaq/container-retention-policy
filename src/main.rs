@@ -1,8 +1,10 @@
 use std::env;
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::process::exit;
 use std::sync::Arc;
 
-use color_eyre::eyre::Result;
+use color_eyre::eyre::{ensure, Result};
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, info_span, trace, warn, Instrument};
 use tracing_indicatif::IndicatifLayer;
@@ -182,11 +184,52 @@ async fn main() -> Result<()> {
             .instrument(info_span!("deleting package versions"))
             .await;
 
-    let mut github_output = env::var("GITHUB_OUTPUT").unwrap_or_default();
+    let output: Box<dyn Write> = if let Some(path) = env::var_os("GITHUB_OUTPUT") {
+        Box::new(OpenOptions::new().create(true).append(true).open(path)?)
+    } else {
+        Box::new(std::io::sink())
+    };
 
-    github_output.push_str(&format!("deleted={}", deleted_packages.join(",")));
-    github_output.push_str(&format!("failed={}", failed_packages.join(",")));
-    env::set_var("GITHUB_OUTPUT", github_output);
+    report_deletions(output, &deleted_packages, &failed_packages)
+}
 
+fn report_deletions(mut output: impl Write, deleted_packages: &[String], failed_packages: &[String]) -> Result<()> {
+    writeln!(output, "deleted={}", deleted_packages.join(","))?;
+    writeln!(output, "failed={}", failed_packages.join(","))?;
+    ensure!(
+        failed_packages.is_empty(),
+        "Failed to delete {} package version(s): {}",
+        failed_packages.len(),
+        failed_packages.join(",")
+    );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reports_successful_deletions_as_separate_output_records() {
+        let mut output = Vec::new();
+        report_deletions(&mut output, &["image:one".into(), "image:two".into()], &[]).unwrap();
+        assert_eq!(output, b"deleted=image:one,image:two\nfailed=\n");
+    }
+
+    #[test]
+    fn reports_partial_failures_and_returns_an_error() {
+        let mut output = Vec::new();
+        let error = report_deletions(&mut output, &["image:one".into()], &["image:two".into()]).unwrap_err();
+        assert_eq!(output, b"deleted=image:one\nfailed=image:two\n");
+        assert!(error
+            .to_string()
+            .contains("Failed to delete 1 package version(s): image:two"));
+    }
+
+    #[test]
+    fn output_write_failures_are_not_ignored() {
+        let mut buffer = [];
+        let output = std::io::Cursor::new(buffer.as_mut_slice());
+        assert!(report_deletions(output, &[], &[]).is_err());
+    }
 }

@@ -47,14 +47,12 @@ inputs:
 outputs:
   deleted:
     description: 'Comma-separated list of image names and tags, for image versions that were deleted during the run.'
-    value: ${{ steps.container-retention-policy.outputs.deleted }}
   failed:
     description: 'Comma-separated list of image names and tags, for image versions that we failed to delete during the run, for an unknown reason.'
-    value: ${{ steps.container-retention-policy.outputs.failed }}
 
 runs:
   using: 'docker'
-  image: 'docker://ghcr.io/snok/container-retention-policy:v3.1.0'
+  image: 'Dockerfile'
   args:
     - --account=${{ inputs.account }}
     - --token=${{ inputs.token }}
