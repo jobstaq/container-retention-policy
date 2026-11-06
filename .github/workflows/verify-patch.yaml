@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 jobs:
   verify:
@@ -21,11 +22,11 @@ jobs:
       - run: cargo test --locked
       - name: Smoke test patched Docker action
         uses: ./
-        env:
-          CRP_TEST: 'true'
         with:
-          account: user
+          account: snok
           token: ${{ secrets.GITHUB_TOKEN }}
-          image-names: unused
+          image-names: container-retention-policy
+          image-tags: retention-patch-smoke-no-matching-tags
+          tag-selection: tagged
           cut-off: 1w
           dry-run: 'true'
